@@ -1,0 +1,64 @@
+title: "Preprocessing"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warnings = FALSE, warning = FALSE)
+```
+
+This step involves filtering the three datasets to retain only those patients that are common across all datasets. This step will also filter out for patients without disease-free survival status since it will be used as a factor for normalizing differential expression analysis.
+
+```{r}
+# Read RNA data from CSV file
+rna_data <- read.csv("data-orig/RNAseq_BRCA.csv")
+
+# Read patient clinical data from tab-separated file
+patient_data <- read.table("data-orig/data_clinical_patient.txt", sep = "\t", header = TRUE)
+
+# Read mutation data from tab-separated file
+mutation_data <- read.csv("data-orig/data_mutations.txt", header = TRUE, sep = "\t")
+
+# Modify mutation_data$Tumor_Sample_Barcode to remove "-01" suffix
+mutation_data$Tumor_Sample_Barcode <- gsub("\\-01", "", mutation_data$Tumor_Sample_Barcode)
+
+# Set row names of RNA data to the first column and remove the first column
+rownames(rna_data) <- rna_data[, 1]
+rna_data <- rna_data[, -1]
+
+# Remove rows in patient_data where DFS_STATUS is empty
+patient_data <- subset(patient_data, patient_data$DFS_STATUS != "")
+
+# Extract the first 12 characters from column names of rna_data
+col_names <- colnames(rna_data)
+col_names <- substring(col_names, 1, 12)
+
+# Replace dots with dashes in col_names
+col_names <- gsub("\\.", "-", col_names)
+
+# Set the modified col_names as the new column names of rna_data
+colnames(rna_data) <- col_names
+
+# Remove duplicated columns in rna_data
+rna_data <- rna_data[, !duplicated(colnames(rna_data))]
+
+# Find common patient IDs between patient_data and rna_data
+common_id_patient.rna <- intersect(patient_data$PATIENT_ID, colnames(rna_data))
+
+# Find common IDs between mutation_data and common_id_patient.rna
+common_id <- intersect(mutation_data$Tumor_Sample_Barcode, common_id_patient.rna)
+
+# Filter columns in rna_data based on common IDs
+rna_data <- rna_data[, colnames(rna_data) %in% common_id]
+
+# Filter rows in patient_data based on common IDs
+patient_data <- patient_data[patient_data$PATIENT_ID %in% common_id, ]
+
+# Filter rows in mutation_data based on common IDs
+mutation_data <- mutation_data[mutation_data$Tumor_Sample_Barcode %in% common_id, ]
+
+# Write processed data to CSV files
+write.csv(rna_data, file = paste0("data-proc/", "rna_data.csv"), row.names = TRUE)
+write.csv(patient_data, file = paste0("data-proc/", "patient_data.csv"), row.names = FALSE)
+write.csv(mutation_data, file = paste0("data-proc/", "mutation_data.csv"), row.names = FALSE)
+
+```
