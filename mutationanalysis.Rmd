@@ -1,0 +1,313 @@
+---
+title: "BMEG 310 MUTATION ANALYSIS ITERATION #1"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+pathways_1 <- "/Users/ghazalfallahpour/Desktop/bmeg\ 310\ final\ proj\ data/data_clinical_patient.txt"
+pathways_2 <- "/Users/ghazalfallahpour/Desktop/bmeg\ 310\ final\ proj\ data/data_mutations.txt"
+
+clinical_data <- read.delim(pathways_1)
+mutation_data <- read.delim(pathways_2)
+```
+ 
+## Preprocessing Data
+```{r}
+
+# Load the 'dplyr' library for data manipulation
+library(dplyr)
+library(ggplot2)
+library("TCGAbiolinks")
+library("survival")
+library("survminer")
+library("ggplot2")
+
+
+# Clean the 'Tumor_Sample_Barcode' column in the mutation_data dataframe
+mutation_data$Tumor_Sample_Barcode <- paste0(substr(mutation_data$Tumor_Sample_Barcode, 1, 12))
+
+# Filter rows in mutation_data based on matching 'Tumor_Sample_Barcode' values in clinical_data
+mutation_data <- mutation_data %>%
+  filter(Tumor_Sample_Barcode %in% clinical_data$X.Patient.Identifier)
+
+# Filter rows in clinical_data based on matching 'X.Patient.Identifier' values in mutation_data
+clinical_data <- clinical_data %>%
+  filter(X.Patient.Identifier %in% mutation_data$Tumor_Sample_Barcode)
+
+# Rename the 'X.Patient.Identifier' column to 'Tumor_Sample_Barcode' in clinical_data
+names(clinical_data)[names(clinical_data) == "X.Patient.Identifier"] <- "Tumor_Sample_Barcode"
+
+# Extract the first two characters of 'American.Joint.Committee.on.Cancer.Tumor.Stage.Code'
+clinical_data$American.Joint.Committee.on.Cancer.Tumor.Stage.Code <-
+  substr(clinical_data$American.Joint.Committee.on.Cancer.Tumor.Stage.Code, 1, 2)
+
+# Extract only the first character of 'Diagnosis.Age'
+clinical_data$Diagnosis.Age <- substr(clinical_data$Diagnosis.Age, 1, 1)
+```
+
+
+
+## Data Visualization
+```{r}
+# Create a data frame 'hugo' with counts of unique values in 'Hugo_Symbol' column 
+#using 'table'
+hugo <- as.data.frame(table(mutation_data$Hugo_Symbol))
+
+# Create a data frame 'var.class' with counts of unique values in 
+#'Variant_Classification' column using 'table'
+var.class <- as.data.frame(table(mutation_data$Variant_Classification))
+
+# Create a bar plot using ggplot, displaying the frequency of each variant classification
+ggplot(data=var.class, aes(x=Var1, y=Freq)) +
+  geom_col() +  # Use geom_col() for a bar plot
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Adjust x-axis text
+  #for better readability
+  labs(x = "Variant Classification", y = "Frequency of Mutations")  # Label the axes
+
+```
+
+## First iteration of filtering 
+```{r}
+
+variants_to_remove <- c("Missense_Mutation", "Silent")
+filtered_mutations <- mutation_data[!grepl(paste(variants_to_remove, collapse="|"),
+                                           mutation_data$Variant_Classification), ]
+
+#variants_to_keep <- c("stop_gained", "frameshift_variant","missense_variant",
+#3"inframe_deletion")
+#filtered_mutations <- mutation_data[grepl(paste(variants_to_keep, collapse="|"),
+#mutation_data$Consequence), ]
+
+#variants_to_keep <- c("HIGH", "MODERATE")
+#filtered_mutations <- mutation_data[grepl(paste(variants_to_keep, collapse="|"),
+#mutation_data$IMPACT), ]
+
+#variants_to_keep <- c("HIGH")
+#filtered_mutations <- mutation_data[grepl(paste(variants_to_keep, collapse="|"),
+#mutation_data$IMPACT), ]
+
+```
+
+
+```{r}
+# Create a data frame 'var.class2' with counts of unique values in 'VARIANT_CLASS'
+#column using 'table'
+var.class2 <- as.data.frame(table(filtered_mutations$VARIANT_CLASS))
+
+# Create a bar plot using ggplot, displaying the frequency of each variant classification
+# Use 'fill=Var1' to color bars based on the levels of the 'Var1' (variant classification) variable
+ggplot(data=var.class2, aes(x=Var1, y=Freq)) +
+  geom_col(aes(fill=Var1))  # Use geom_col() for a bar plot with fill color
+```
+
+```{r}
+library(ggplot2)
+
+# Create a data frame 'sample.name' with counts of unique values in 'Tumor_Sample_Barcode' 
+#column using 'table'
+sample.name <- as.data.frame(table(filtered_mutations$Tumor_Sample_Barcode))
+
+# Create a data frame 'hugo' with counts of unique values in 'Hugo_Symbol' column using 'table'
+hugo <- as.data.frame(table(filtered_mutations$Hugo_Symbol))
+
+# Order the 'hugo' data frame based on the frequency of occurrences in descending order
+hugo.ordered <- hugo[order(-hugo$Freq),]
+
+# Create a bar plot using ggplot, displaying the top 25 most frequent genes
+ggplot(data=hugo.ordered[1:25,], aes(x=Var1, y=Freq)) +
+  geom_col() +  # Use geom_col() for a bar plot
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Adjust x-axis text for better 
+#readability
+  scale_x_discrete(limits = hugo.ordered[1:25,]$Var1) +  # Set x-axis limits for the 
+#top 25 genes
+  
+  labs(x = "Hugo Code of Genes", y = "Frequency of Mutations in Genes")  # Label the axes
+  
+
+```
+
+## Making the Onco Plot
+
+```{r}
+
+#Creating the Onco plot Matrix (Tutorial Code)
+
+cnv_events = unique(filtered_mutations$Variant_Classification)
+oncomat = reshape2::dcast(
+  data = filtered_mutations,
+  formula = Hugo_Symbol ~ Tumor_Sample_Barcode,
+  fun.aggregate = function(x, cnv = cnv_events) {
+    x = as.character(x) # >= 2 same/distinct variant classification = Multi_Hit
+    xad = x[x %in% cnv]
+    xvc = x[!x %in% cnv]
+    
+    if (length(xvc) > 0) {
+      xvc = ifelse(test = length(xvc) > 1,
+                   yes = 'Multi_Hit',
+                   no = xvc)
+    }
+    
+    x = ifelse(
+      test = length(xad) > 0,
+      yes = paste(xad, xvc, sep = ';'),
+      no = xvc
+    )
+    x = gsub(pattern = ';$',
+             replacement = '',
+             x = x)
+    x = gsub(pattern = '^;',
+             replacement = '',
+             x = x)
+    return(x)
+  },
+  value.var = 'Variant_Classification',
+  fill = '',
+  drop = FALSE
+)
+
+
+
+# Set row names in the 'oncomat' dataframe to the values in the 'Hugo_Symbol' column
+rownames(oncomat) = oncomat$Hugo_Symbol
+
+# Remove the 'Hugo_Symbol' column from the 'oncomat' dataframe
+oncomat <- oncomat[,-1]
+
+# Order the 'oncomat' dataframe based on the frequency of occurrences in descending order
+oncomat.ordered <- oncomat[order(-hugo$Freq),]
+
+# Create a binary matrix 'mat' indicating presence (1) or absence (0) of mutations
+mat <- oncomat.ordered
+mat[mat!=""] <- 1  # Set non-empty entries to 1
+mat[mat==""] <- 0  # Set empty entries to 0
+mat <- apply(mat, 2 ,as.numeric)  # Convert the matrix to numeric values
+mat <- as.matrix(mat)
+
+# Set row names of 'mat' to the row names of 'oncomat.ordered'
+rownames(mat)  <-  row.names(oncomat.ordered)
+```
+
+## Developing the Heatmap
+
+
+```{r}
+# Load the 'pheatmap' library for creating heatmap visualizations
+library(pheatmap)
+
+# Extract the first four rows of the binary matrix 'mat' for visualization 
+#(iterations of 2,3,4,7 included)
+#reduce.mat <- mat[1:2,]
+#reduce.mat <- mat[1:3,]
+#reduce.mat <- mat[1:4,]
+reduce.mat <- mat[1:7,]
+
+
+
+# Create a heatmap using pheatmap, without clustering rows, and without displaying column names
+res <- pheatmap(reduce.mat,
+                cluster_rows = F,  # Do not cluster rows
+                show_colnames = FALSE)  # Do not display column names
+```
+
+## Clustering
+
+
+```{r}
+# Assign cluster labels to samples using cutree on the column dendrogram from the heatmap 
+#(iterations of 2 and 3 included)
+cluster <- as.data.frame(cutree(res$tree_col, k = 4))
+#cluster <- as.data.frame(cutree(res$tree_col, k = 3))
+#cluster <- as.data.frame(cutree(res$tree_col, k = 2))
+
+# Initialize a new column 'cluster_group' in the 'clinical_data' dataframe with default value 1
+clinical_data$cluster_group <- 1
+
+# Loop through each row in the 'clinical_data' dataframe
+for (i in 1:nrow(clinical_data)) {
+  
+    # Extract the Tumor_Sample_Barcode for the current row
+    patient_id <- clinical_data$Tumor_Sample_Barcode[i]
+
+    # Loop through each row in the 'cluster' dataframe
+    for (m in 1:nrow(cluster)) {
+      
+      # Check if the Tumor_Sample_Barcode in 'cluster' matches the current 
+      #Tumor_Sample_Barcode in 'clinical_data'
+      if (rownames(cluster)[m] == patient_id) {
+        # Assign the cluster label to the 'cluster_group' column in 'clinical_data'
+        clinical_data$cluster_group[i] <- cluster[m, 1]
+      }
+      
+    }
+}
+
+# Display the table of cluster labels and their counts
+table(cluster)
+
+
+```
+
+
+
+```{r}
+#choosing which clusters to continue survival analysis with
+cluster_group_to_not_include_1 <- 1
+cluster_group_to_not_include_2 <- 4
+
+
+clinical_data1 <- subset(clinical_data, cluster_group != cluster_group_to_not_include_1 &
+cluster_group != cluster_group_to_not_include_2)
+```
+
+## Survival Analysis 
+
+
+```{r}
+# Create a subset dataframe 'clin_df' from 'clinical_data1' with selected columns
+clin_df = clinical_data1[
+  c("Diagnosis.Age",
+    "Disease.specific.Survival.status",
+    "Overall.Survival..Months.",
+    "Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date",
+    "Sex",
+    "American.Joint.Committee.on.Cancer.Tumor.Stage.Code",
+    "cluster_group"
+  )]
+
+
+# Create a binary column 'deceased' indicating whether the patient is dead with tumor
+clin_df$deceased = clin_df$Disease.specific.Survival.status == "1:DEAD WITH TUMOR"
+
+# Convert the date variable to numeric and scale to months
+clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date <-
+  as.numeric(clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date)
+clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date <-
+  clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date / 30.417
+
+# Create a new column 'overall_survival' based on 'Overall.Survival..Months.' and scaled date variable
+clin_df$overall_survival = ifelse(clin_df$deceased,
+                                   clin_df$Overall.Survival..Months., clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date)
+
+# Set missing or negative values in 'overall_survival' to 0
+clin_df$overall_survival[is.na(clin_df$overall_survival) | clin_df$overall_survival < 0] <- 0
+
+# Convert 'overall_survival' to numeric
+clin_df$overall_survival <- as.numeric(clin_df$overall_survival)
+
+# Perform survival analysis using the Surv function
+Surv(clin_df$overall_survival, clin_df$deceased) ~ clin_df$cluster_group
+
+# Fit survival curves based on the 'cluster_group' variable
+fit = survfit(Surv(overall_survival, deceased) ~ cluster_group, data=clin_df)
+
+# Create survival plots using ggsurvplot
+ggsurvplot(fit, data=clin_df, pval=TRUE, risk.table=FALSE, risk.table.col="strata", 
+           risk.table.height=0.35)
+
+```
