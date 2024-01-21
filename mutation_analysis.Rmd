@@ -288,26 +288,4 @@ clin_df$deceased = clin_df$Disease.specific.Survival.status == "1:DEAD WITH TUMO
 clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date <-
   as.numeric(clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date)
 clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date <-
-  clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date / 30.417
-
-# Create a new column 'overall_survival' based on 'Overall.Survival..Months.' and scaled date variable
-clin_df$overall_survival = ifelse(clin_df$deceased,
-                                   clin_df$Overall.Survival..Months., clin_df$Last.Communication.Contact.from.Initial.Pathologic.Diagnosis.Date)
-
-# Set missing or negative values in 'overall_survival' to 0
-clin_df$overall_survival[is.na(clin_df$overall_survival) | clin_df$overall_survival < 0] <- 0
-
-# Convert 'overall_survival' to numeric
-clin_df$overall_survival <- as.numeric(clin_df$overall_survival)
-
-# Perform survival analysis using the Surv function
-Surv(clin_df$overall_survival, clin_df$deceased) ~ clin_df$cluster_group
-
-# Fit survival curves based on the 'cluster_group' variable
-fit = survfit(Surv(overall_survival, deceased) ~ cluster_group, data=clin_df)
-
-# Create survival plots using ggsurvplot
-ggsurvplot(fit, data=clin_df, pval=TRUE, risk.table=FALSE, risk.table.col="strata", 
-           risk.table.height=0.35)
-
-```
+  cl
