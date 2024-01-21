@@ -1,0 +1,59 @@
+## First iteration of filtering 
+```{r}
+
+variants_to_remove <- c("Missense_Mutation", "Silent")
+filtered_mutations <- mutation_data[!grepl(paste(variants_to_remove, collapse="|"),
+                                           mutation_data$Variant_Classification), ]
+
+#variants_to_keep <- c("stop_gained", "frameshift_variant","missense_variant",
+#3"inframe_deletion")
+#filtered_mutations <- mutation_data[grepl(paste(variants_to_keep, collapse="|"),
+#mutation_data$Consequence), ]
+
+#variants_to_keep <- c("HIGH", "MODERATE")
+#filtered_mutations <- mutation_data[grepl(paste(variants_to_keep, collapse="|"),
+#mutation_data$IMPACT), ]
+
+#variants_to_keep <- c("HIGH")
+#filtered_mutations <- mutation_data[grepl(paste(variants_to_keep, collapse="|"),
+#mutation_data$IMPACT), ]
+
+```
+
+
+```{r}
+# Create a data frame 'var.class2' with counts of unique values in 'VARIANT_CLASS'
+#column using 'table'
+var.class2 <- as.data.frame(table(filtered_mutations$VARIANT_CLASS))
+
+# Create a bar plot using ggplot, displaying the frequency of each variant classification
+# Use 'fill=Var1' to color bars based on the levels of the 'Var1' (variant classification) variable
+ggplot(data=var.class2, aes(x=Var1, y=Freq)) +
+  geom_col(aes(fill=Var1))  # Use geom_col() for a bar plot with fill color
+```
+
+```{r}
+library(ggplot2)
+
+# Create a data frame 'sample.name' with counts of unique values in 'Tumor_Sample_Barcode' 
+#column using 'table'
+sample.name <- as.data.frame(table(filtered_mutations$Tumor_Sample_Barcode))
+
+# Create a data frame 'hugo' with counts of unique values in 'Hugo_Symbol' column using 'table'
+hugo <- as.data.frame(table(filtered_mutations$Hugo_Symbol))
+
+# Order the 'hugo' data frame based on the frequency of occurrences in descending order
+hugo.ordered <- hugo[order(-hugo$Freq),]
+
+# Create a bar plot using ggplot, displaying the top 25 most frequent genes
+ggplot(data=hugo.ordered[1:25,], aes(x=Var1, y=Freq)) +
+  geom_col() +  # Use geom_col() for a bar plot
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Adjust x-axis text for better 
+#readability
+  scale_x_discrete(limits = hugo.ordered[1:25,]$Var1) +  # Set x-axis limits for the 
+#top 25 genes
+  
+  labs(x = "Hugo Code of Genes", y = "Frequency of Mutations in Genes")  # Label the axes
+  
+
+```
